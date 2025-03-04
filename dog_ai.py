@@ -19,14 +19,14 @@ np.set_printoptions(suppress=True)
 from tensorflow.keras.layers import DepthwiseConv2D
 
 
-# Custom DepthwiseConv2D (from test_proj2.py) to ignore 'groups' argument
+# Custom DepthwiseConv2D to ignore 'groups' argument
 class CustomDepthwiseConv2D(DepthwiseConv2D):
    def __init__(self, *args, **kwargs):
        kwargs.pop("groups", None)
        super().__init__(*args, **kwargs)
 
 
-# Load the model (paths from original test_proj2.py)
+# Load the model 
 model = load_model(
    "/home/cecegraf/vsCode/Python/Classwork/DogAI/keras_model.h5",
    compile=False,
@@ -34,7 +34,7 @@ model = load_model(
 )
 
 
-# Load the labels (from original test_proj2.py)
+# Load the labels 
 class_names = open("/home/cecegraf/vsCode/Python/Classwork/DogAI/labels.txt", "r").readlines()
 
 
@@ -107,7 +107,7 @@ cv2.destroyAllWindows()
 
 # -------------------------
 # Below is the snippet logic for classifying a single image:
-# We keep it separate so minimal changes are made.
+
 
 
 def classify_single_image(image_path):
