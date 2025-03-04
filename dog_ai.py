@@ -1,94 +1,158 @@
 import os
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
-import cv2
-import serial
-import time
-import numpy as np
+
 import tensorflow as tf
-from tensorflow.keras.models import load_model
+from tensorflow.keras.models import load_model  # Use the Keras integrated in TensorFlow
+import cv2  # Install opencv-python
+import numpy as np
+
+
+# We add these imports from the snippet:
+from PIL import Image, ImageOps  # Install pillow
+
+
+# Disable scientific notation for clarity
+np.set_printoptions(suppress=True)
+
+
 from tensorflow.keras.layers import DepthwiseConv2D
-from PIL import Image, ImageOps
 
-# Custom DepthwiseConv2D to ignore the 'groups' argument
+
+# Custom DepthwiseConv2D (from test_proj2.py) to ignore 'groups' argument
 class CustomDepthwiseConv2D(DepthwiseConv2D):
-    def __init__(self, *args, **kwargs):
-        kwargs.pop("groups", None)
-        super().__init__(*args, **kwargs)
+   def __init__(self, *args, **kwargs):
+       kwargs.pop("groups", None)
+       super().__init__(*args, **kwargs)
 
-# Load the model and labels (adjust paths as needed)
+
+# Load the model (paths from original test_proj2.py)
 model = load_model(
-    "/home/cecegraf/vsCode/Python/Classwork/DogAI/keras_model.h5",
-    compile=False,
-    custom_objects={"DepthwiseConv2D": CustomDepthwiseConv2D}
+   "/home/cecegraf/vsCode/Python/Classwork/DogAI/keras_model.h5",
+   compile=False,
+   custom_objects={"DepthwiseConv2D": CustomDepthwiseConv2D}
 )
+
+
+# Load the labels (from original test_proj2.py)
 class_names = open("/home/cecegraf/vsCode/Python/Classwork/DogAI/labels.txt", "r").readlines()
 
-# Initialize camera
-print("Attempting to open the camera...")
+
+# CAMERA can be 0 or 1 based on default camera of your computer
 camera = cv2.VideoCapture(0)
-if not camera.isOpened():
-    print("Error: Camera not opened!")
-else:
-    print("Camera opened successfully!")
-
-# Initialize Arduino serial connection
-print("Attempting to connect to Arduino...")
-arduino = serial.Serial('/dev/ttyACM0', 9600)
-time.sleep(2)  # Allow time for Arduino to reset
-print("Arduino connected successfully!")
 
 
-
+previous_key = None  # Track the last key pressed
 
 
 while True:
-    ret, frame = camera.read()
-    if not ret:
-        print("Error: Failed to grab frame from camera")
-        break
-    cv2.imshow("Webcam Image", frame)
+   # Grab the webcamera's image
+   ret, image = camera.read()
 
-    # Preprocess the frame for the model
-    image = cv2.resize(frame, (224, 224), interpolation=cv2.INTER_AREA)
-    image = np.asarray(image, dtype=np.float32).reshape(1, 224, 224, 3)
-    image = (image / 127.5) - 1
 
-    # Make prediction
-    prediction = model.predict(image)
-    index = np.argmax(prediction)
-    class_name = class_names[index]
-    confidence_score = prediction[0][index]
+   # Resize the raw image into (224-height,224-width) pixels
+   image = cv2.resize(image, (224, 224), interpolation=cv2.INTER_AREA)
 
-    # Debug prints to see what the model is outputting
-    print("Raw label:", repr(class_name))
-    predicted_label = class_name
-    print("Predicted label:", predicted_label)
-    print("Confidence Score:", confidence_score)
 
-    # Send "ON" if the label exactly equals "0 Dogs"; otherwise, "OFF"
-    if predicted_label == "0 Dogs\n":
-        message_to_send = "ON\n"
-  
+   # Show the image in a window
+   cv2.imshow("Webcam Image", image)
 
-    # Send command only if it differs from the last sent command
-   
-    arduino.write(message_to_send.encode('utf-8'))
-    print(f"Sent to Arduino: {message_to_send.strip()}")
-    time.sleep(0.2)
-    # Optionally, check for response from Arduino
-    if arduino.in_waiting > 0:
-        received_data = arduino.readline().decode('utf-8').strip()
-        print(f"Received from Arduino: {received_data}")
 
-    keyboard_input = cv2.waitKey(1)
-    if keyboard_input == 27:  # ESC key
-        print("ESC pressed. Exiting loop.")
-        break
+   # Make the image a numpy array and reshape it to the model's input shape.
+   image = np.asarray(image, dtype=np.float32).reshape(1, 224, 224, 3)
+   # Normalize the image array
+   image = (image / 127.5) - 1
 
-    
 
-arduino.close()
-print("Serial port closed")
+   # Predict using the webcam frame
+   prediction = model.predict(image)
+   index = np.argmax(prediction)
+   class_name = class_names[index]
+   confidence_score = prediction[0][index]
+
+
+   # Print prediction and confidence score
+   print("Class:", class_name[2:], end="")
+   print("Confidence Score:", str(np.round(confidence_score * 100))[:-2], "%")
+
+
+   # Listen to the keyboard for presses.
+   keyboard_input = cv2.waitKey(1)
+
+
+   # Quit when pressing '1' then '3' in sequence
+   if keyboard_input == ord('1'):
+       previous_key = '1'
+   elif keyboard_input == ord('3') and previous_key == '1':
+       print("User pressed 1 then 3 — exiting!")
+       break
+   elif keyboard_input == 27:  # ESC key
+       break
+   elif keyboard_input != -1:
+       # If a different key is pressed, reset
+       previous_key = None
+
+
+   if class_name == "0 Dogs\n":
+       message_to_send = "ON\n"
+   elif class_name =="1 Not Dogs\n":
+    message_to_send = "OFF\n"
+
+
+
+
 camera.release()
 cv2.destroyAllWindows()
+
+
+# -------------------------
+# Below is the snippet logic for classifying a single image:
+# We keep it separate so minimal changes are made.
+
+
+def classify_single_image(image_path):
+   # Create the array of the right shape for our model
+   data = np.ndarray(shape=(1, 224, 224, 3), dtype=np.float32)
+
+
+   # Open the image with Pillow
+   image = Image.open(image_path).convert("RGB")
+
+
+   # Resize the image to 224x224
+   size = (224, 224)
+   image = ImageOps.fit(image, size, Image.Resampling.LANCZOS)
+
+
+   # Convert the image to a numpy array
+   image_array = np.asarray(image)
+
+
+   # Normalize the image
+   normalized_image_array = (image_array.astype(np.float32) / 127.5) - 1
+
+
+   # Load the image into the array
+   data[0] = normalized_image_array
+
+
+   # Predict using the same loaded model
+   prediction = model.predict(data)
+   index = np.argmax(prediction)
+   class_name = class_names[index]
+   confidence_score = prediction[0][index]
+
+
+   # Print prediction and confidence score
+   print("Class:", class_name[2:], end="")
+   print("Confidence Score:", confidence_score)
+
+
+ 
+
+
+
+
+
+
+
