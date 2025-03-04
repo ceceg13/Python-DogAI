@@ -1,0 +1,15 @@
+int led = 9; // Change to the pin where your LED is connected
+void setup() {
+pinMode(led, OUTPUT);
+Serial.begin(9600); // Start serial communication at 9600 baud
+}
+void loop() {
+  if (Serial.available() > 0) {
+     String command = Serial.readStringUntil('\n');
+      Serial.print("Received command: ");
+  if (command == "ON") {
+    digitalWrite(led, HIGH); // Turn LED ON
+    Serial.println("LED is ON");
+  }
+  }  
+}
